@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>寶可夢御三家排球賽 - 終極完整版</title>
+    <style>
+        body { margin: 0; display: flex; justify-content: center; align-items: center; height: 100vh; background: #2c3e50; font-family: 'Microsoft JhengHei', Arial, sans-serif; overflow: hidden; color: white; }
+        canvas { background: #87CEEB; border: 4px solid #fff; box-shadow: 0 0 30px rgba(0,0,0,0.7); }
+        #overlay { position: absolute; width: 800px; height: 400px; display: flex; flex-direction: column; justify-content: center; align-items: center; background: rgba(0,0,0,0.85); z-index: 10; border-radius: 4px; }
+        .menu-btn { background: #f1c40f; color: #333; border: none; padding: 10px 30px; margin: 10px; font-size: 20px; font-weight: bold; cursor: pointer; border-radius: 5px; width: 220px; transition: 0.2s; }
+        .menu-btn:hover { background: #fff; transform: scale(1.05); }
+        .char-grid { display: grid; grid-template-columns: repeat(3, 100px); gap: 10px; margin-top: 15px; }
+        .char-box { width: 90px; height: 90px; border: 3px solid #555; display: flex; flex-direction: column; justify-content: center; align-items: center; cursor: pointer; border-radius: 10px; position: relative; transition: 0.2s; background: rgba(255,255,255,0.1); }
+        .char-box:hover { border-color: #aaa; background: rgba(255,255,255,0.2); }
+        .char-box img { width: 60px; height: 60px; object-fit: contain; pointer-events: none; }
+        .char-box.p1-select { border-color: #ff3333; background: rgba(255,51,51,0.4); box-shadow: 0 0 10px #ff3333; }
+        .char-box.p2-select { border-color: #3333ff; background: rgba(51,51,255,0.4); box-shadow: 0 0 10px #3333ff; }
+        .label { position: absolute; top: -10px; font-size: 11px; background: #333; padding: 2px 6px; border-radius: 3px; z-index: 2; color: white; }
+        .hidden { display: none !important; }
+        #win-screen h1 { font-size: 60px; color: #f1c40f; text-shadow: 3px 3px 0 #000; margin-bottom: 20px; }
+    </style>
+</head>
+<body>
+
+    <div id="overlay">
+        <div id="main-menu">
+            <h1 style="color:#f1c40f; letter-spacing: 5px;">歷代御三家排球賽</h1>
+            <p>1P: WASD | 2P: 方向鍵</p>
+            <button class="menu-btn" onclick="showCharSelect()">進入角色選擇</button>
+            <button class="menu-btn" style="background:#bdc3c7" onclick="alert('請直接關閉分頁離開')">離開遊戲</button>
+        </div>
+
+        <div id="char-select" class="hidden">
+            <h2>選擇你的夥伴 (目標 20 分)</h2>
+            <div class="char-grid" id="charGrid"></div>
+            <button class="menu-btn" style="margin-top: 25px;" onclick="startGame()">確定並開始</button>
+            <button class="menu-btn" style="background: #e74c3c; color: white;" onclick="showMainMenu()">返回</button>
+        </div>
+
+        <div id="win-screen" class="hidden">
+            <h1 id="winner-text">P1 獲勝！</h1>
+            <button class="menu-btn" onclick="showCharSelect()">再玩一次</button>
+            <button class="menu-btn" onclick="location.reload()">回主頁面</button>
+        </div>
+    </div>
+
+    <canvas id="gameCanvas" width="800" height="400"></canvas>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const overlay = document.getElementById('overlay');
+const charGrid = document.getElementById('charGrid');
+
+// --- 1. 角色與資源設定 ---
+const pokemonData = [
+    { name: '草苗龜', img: 'turtwig.png', color: '#78C850' },
+    { name: '小火焰猴', img: 'chimchar.png', color: '#F08030' },
+    { name: '波加曼', img: 'piplup.png', color: '#6890F0' },
+    { name: '藤藤蛇', img: 'snivy.png', color: '#4E8234' },
+    { name: '暖暖豬', img: 'tepig.png', color: '#FF4422' },
+    { name: '水水獺', img: 'oshawott.png', color: '#9DB7F5' },
+    { name: '哈力栗', img: 'chespin.png', color: '#A8B820' },
+    { name: '火狐狸', img: 'fennekin.png', color: '#F08030' },
+    { name: '呱呱泡蛙', img: 'froakie.png', color: '#6890F0' }
+];
+
+const images = {};
+const ballImg = new Image();
+ballImg.src = 'volleyball.png';
+
+// 預載圖片
+pokemonData.forEach(p => {
+    const img = new Image();
+    img.src = p.img;
+    images[p.name] = img;
+});
+
+// --- 2. 遊戲變數 ---
+let gameState = 'MENU';
+let p1Idx = 0, p2Idx = 2, countdownNum = 3;
+let p1, p2, ball;
+const keys = {};
+
+// --- 3. UI 邏輯 ---
+function initCharGrid() {
+    charGrid.innerHTML = '';
+    pokemonData.forEach((p, i) => {
+        const box = document.createElement('div');
+        box.className = 'char-box';
+        box.innerHTML = `<img src="${p.img}" alt="${p.name}" onerror="this.style.display='none'"><div style="font-size:10px">${p.name}</div>`;
+        box.onclick = () => { 
+            if(i !== p1Idx) { p2Idx = p1Idx; p1Idx = i; updateCharHighlight(); }
+        };
+        charGrid.appendChild(box);
+    });
+    updateCharHighlight();
+}
+
+function updateCharHighlight() {
+    document.querySelectorAll('.char-box').forEach((box, i) => {
+        box.classList.remove('p1-select', 'p2-select');
+        box.querySelectorAll('.label').forEach(l => l.remove());
+        if (i === p1Idx) {
+            box.classList.add('p1-select');
+            box.insertAdjacentHTML('afterbegin', '<span class="label">1P</span>');
+        } else if (i === p2Idx) {
+            box.classList.add('p2-select');
+            box.insertAdjacentHTML('afterbegin', '<span class="label" style="background:#33f">2P</span>');
+        }
+    });
+}
+
+function showCharSelect() {
+    gameState = 'CHAR_SELECT';
+    document.getElementById('main-menu').classList.add('hidden');
+    document.getElementById('win-screen').classList.add('hidden');
+    document.getElementById('char-select').classList.remove('hidden');
+    initCharGrid();
+}
+
+function showMainMenu() {
+    gameState = 'MENU';
+    document.getElementById('main-menu').classList.remove('hidden');
+    document.getElementById('char-select').classList.add('hidden');
+}
+
+function startGame() {
+    overlay.classList.add('hidden');
+    gameState = 'COUNTDOWN';
+    countdownNum = 3;
+    
+    // 初始化角色物件
+    p1 = { x: 100, y: 320, w: 65, h: 65, vy: 0, score: 0, jumping: false, data: pokemonData[p1Idx] };
+    p2 = { x: 635, y: 320, w: 65, h: 65, vy: 0, score: 0, jumping: false, data: pokemonData[p2Idx] };
+    ball = { x: 400, y: 100, r: 15, vx: 5, vy: 0 };
+    
+    let timer = setInterval(() => {
+        countdownNum--;
+        if (countdownNum <= 0) { clearInterval(timer); gameState = 'PLAYING'; }
+    }, 1000);
+}
+
+// --- 4. 遊戲核心邏輯 ---
+window.onkeydown = (e) => keys[e.code] = true;
+window.onkeyup = (e) => keys[e.code] = false;
+
+function loop() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // 繪製背景與網子
+    ctx.fillStyle = '#F4A460'; ctx.fillRect(0, 385, canvas.width, 15);
+    ctx.fillStyle = '#FFF'; ctx.fillRect(397, 260, 6, 125);
+
+    if (gameState === 'PLAYING' || gameState === 'COUNTDOWN') {
+        drawEntity(p1);
+        drawEntity(p2);
+        
+        // 畫球
+        if (ballImg.complete && ballImg.width > 0) {
+            ctx.drawImage(ballImg, ball.x - 15, ball.y - 15, 30, 30);
+        } else {
+            ctx.beginPath(); ctx.arc(ball.x, ball.y, 15, 0, Math.PI*2);
+            ctx.fillStyle = "white"; ctx.fill(); ctx.stroke();
+        }
+
+        // 分數
+        ctx.fillStyle = "white"; ctx.font = "bold 40px Arial";
+        ctx.textAlign = "center";
+        ctx.fillText(`${p1.score} : ${p2.score}`, 400, 60);
+
+        if (gameState === 'COUNTDOWN') {
+            ctx.fillStyle = "rgba(0,0,0,0.4)"; ctx.fillRect(0, 0, 800, 400);
+            ctx.fillStyle = "#f1c40f"; ctx.font = "bold 100px Arial";
+            ctx.fillText(countdownNum, 400, 230);
+        } else {
+            updatePhysics();
+        }
+    }
+    requestAnimationFrame(loop);
+}
+
+function drawEntity(p) {
+    const img = images[p.data.name];
+    if (img.complete && img.width > 0) {
+        ctx.drawImage(img, p.x, p.y, p.w, p.h);
+    } else {
+        // 沒圖片時的保險方塊
+        ctx.fillStyle = p.data.color;
+        ctx.fillRect(p.x, p.y, p.w, p.h);
+    }
+    // 名字標籤
+    ctx.fillStyle = "white"; ctx.font = "12px Arial";
+    ctx.fillText(p.data.name, p.x + p.w/2, p.y - 10);
+}
+
+function updatePhysics() {
+    // 1P 控制 (WASD)
+    if (keys['KeyA'] && p1.x > 0) p1.x -= 8;
+    if (keys['KeyD'] && p1.x < 335) p1.x += 8;
+    if (keys['KeyW'] && !p1.jumping) { p1.vy = -14; p1.jumping = true; }
+
+    // 2P 控制 (方向鍵)
+    if (keys['ArrowLeft'] && p2.x > 400) p2.x -= 8;
+    if (keys['ArrowRight'] && p2.x < 735) p2.x += 8;
+    if (keys['ArrowUp'] && !p2.jumping) { p2.vy = -14; p2.jumping = true; }
+
+    // 重力
+    [p1, p2].forEach(p => {
+        p.vy += 0.6; p.y += p.vy;
+        if (p.y >= 320) { p.y = 320; p.vy = 0; p.jumping = false; }
+    });
+
+    // 球移動
+    ball.vy += 0.35;
+    ball.x += ball.vx; ball.y += ball.vy;
+
+    // 球邊界
+    if (ball.x < 15 || ball.x > 785) ball.vx *= -1;
+    if (ball.y < 15) { ball.y = 15; ball.vy *= -1; }
+
+    // 球與人碰撞
+    [p1, p2].forEach(p => {
+        if (ball.x > p.x - 10 && ball.x < p.x + p.w + 10 && ball.y + 15 > p.y && ball.y - 15 < p.y + p.h) {
+            ball.vy = -12;
+            ball.vx = (ball.x - (p.x + p.w/2)) * 0.5;
+            ball.y = p.y - 16; // 防止卡球
+        }
+    });
+
+    // 球與網子
+    if (ball.x > 390 && ball.x < 410 && ball.y > 260) {
+        ball.vx *= -1.2;
+        ball.x = (ball.x < 400) ? 389 : 411;
+    }
+
+    // 得分判定
+    if (ball.y > 370) {
+        if (ball.x < 400) p2.score++; else p1.score++;
+        
+        if (p1.score >= 20 || p2.score >= 20) {
+            endGame();
+        } else {
+            resetBall(ball.x < 400 ? 'p2' : 'p1');
+        }
+    }
+}
+
+function resetBall(server) {
+    ball.y = 100; ball.vy = 0;
+    ball.x = (server === 'p1') ? 600 : 200;
+    ball.vx = (server === 'p1') ? -5 : 5;
+}
+
+function endGame() {
+    gameState = 'END';
+    overlay.classList.remove('hidden');
+    document.getElementById('char-select').classList.add('hidden');
+    document.getElementById('win-screen').classList.remove('hidden');
+    document.getElementById('winner-text').innerText = (p1.score >= 20) ? "1P 獲勝！" : "2P 獲勝！";
+}
+
+// 啟動
+loop();
+</script>
+</body>
+</html>
