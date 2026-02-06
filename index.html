@@ -180,15 +180,26 @@ function updatePhysics() {
 
     // 2P 控制 (玩家或 AI)
     if (isAIMode) {
-        // AI 邏輯：追球
-        let targetX = ball.x - p2.w / 2;
+        // AI 邏輯：增加動態偏移，防止底線直上直下
+        let aiOffset = Math.sin(Date.now() / 500) * 15; 
+        let targetX = ball.x - p2.w / 2 + aiOffset;
+
+        // 底線防呆：太靠近牆壁時稍微往場內站
+        if (p2.x > 720 && ball.x > 740) {
+            targetX = 650; 
+        }
+
+        // 移動執行
         if (p2.x < targetX && p2.x < 735) p2.x += 6;
-        if (p2.x > targetX && p2.x > 400) p2.x -= 6;
-        // 如果球在頭頂且不高，就跳起來接
-        if (ball.y > 150 && Math.abs(ball.x - (p2.x + p2.w/2)) < 30 && !p2.jumping) {
-            p2.vy = -14; p2.jumping = true;
+        if (p2.x > targetX && p2.x > 405) p2.x -= 6;
+
+        // 跳躍邏輯改進
+        if (ball.y > 180 && ball.vy > 0 && Math.abs(ball.x - (p2.x + p2.w/2)) < 50 && !p2.jumping) {
+            p2.vy = -14;
+            p2.jumping = true;
         }
     } else {
+        // 雙人模式控制
         if (keys['ArrowLeft'] && p2.x > 400) p2.x -= 8;
         if (keys['ArrowRight'] && p2.x < 735) p2.x += 8;
         if (keys['ArrowUp'] && !p2.jumping) { p2.vy = -14; p2.jumping = true; }
@@ -240,3 +251,4 @@ loop();
 </script>
 </body>
 </html>
+
