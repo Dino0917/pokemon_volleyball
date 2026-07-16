@@ -2,11 +2,11 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>寶可夢御三家排球賽 - AI 單人版</title>
+    <title>寶可夢御三家排球賽</title>
     <style>
         body { margin: 0; display: flex; justify-content: center; align-items: center; height: 100vh; background: #2c3e50; font-family: 'Microsoft JhengHei', Arial, sans-serif; overflow: hidden; color: white; }
-        canvas { background: #87CEEB; border: 4px solid #fff; box-shadow: 0 0 30px rgba(0,0,0,0.7); }
-        #overlay { position: absolute; width: 800px; height: 400px; display: flex; flex-direction: column; justify-content: center; align-items: center; background: rgba(0,0,0,0.85); z-index: 10; border-radius: 4px; }
+        canvas { background: #87CEEB; border: 4px solid #fff; box-shadow: 0 0 30px rgba(0,0,0,0.7); cursor: pointer; }
+        #overlay { position: absolute; width: 800px; height: 440px; display: flex; flex-direction: column; justify-content: center; align-items: center; background: rgba(0,0,0,0.85); z-index: 10; border-radius: 4px; }
         .menu-btn { background: #f1c40f; color: #333; border: none; padding: 10px 30px; margin: 10px; font-size: 20px; font-weight: bold; cursor: pointer; border-radius: 5px; width: 240px; transition: 0.2s; }
         .menu-btn:hover { background: #fff; transform: scale(1.05); }
         .char-grid { display: grid; grid-template-columns: repeat(3, 100px); gap: 10px; margin-top: 15px; }
@@ -17,6 +17,12 @@
         .label { position: absolute; top: -10px; font-size: 11px; background: #333; padding: 2px 6px; border-radius: 3px; z-index: 2; color: white; }
         .hidden { display: none !important; }
         #win-screen h1 { font-size: 60px; color: #f1c40f; text-shadow: 3px 3px 0 #000; margin-bottom: 20px; }
+
+        #player-toggle { display: flex; gap: 10px; margin-top: 10px; }
+        .toggle-btn { border: none; padding: 8px 20px; font-size: 15px; font-weight: bold; cursor: pointer; border-radius: 20px; background: #f1c40f; color: #333; transition: 0.2s; }
+        .toggle-btn.active-p1 { background: #ff3333; color: #fff; box-shadow: 0 0 10px #ff3333; }
+        .toggle-btn.active-p2 { background: #3333ff; color: #fff; box-shadow: 0 0 10px #3333ff; }
+        #hint-text { font-size: 13px; color: #ccc; margin-top: 6px; }
     </style>
 </head>
 <body>
@@ -31,6 +37,13 @@
 
         <div id="char-select" class="hidden">
             <h2 id="mode-text">選擇你的夥伴</h2>
+
+            <div id="player-toggle" class="hidden">
+                <button class="toggle-btn" id="toggleP1" onclick="setSelectingPlayer(1)">🔴 1P 選角中</button>
+                <button class="toggle-btn" id="toggleP2" onclick="setSelectingPlayer(2)">🔵 2P 選角中</button>
+            </div>
+            <div id="hint-text" class="hidden">先點選上方按鈕決定要換誰的角色，再點格子選擇</div>
+
             <div class="char-grid" id="charGrid"></div>
             <button class="menu-btn" style="margin-top: 25px;" onclick="startGame()">確定並開始</button>
             <button class="menu-btn" style="background: #e74c3c; color: white;" onclick="showMainMenu()">返回</button>
@@ -51,17 +64,17 @@ const ctx = canvas.getContext('2d');
 const overlay = document.getElementById('overlay');
 const charGrid = document.getElementById('charGrid');
 
-// --- 1. 角色與資源設定 ---
+// --- 1. 角色與資源設定（新增 type 欄位定義屬性） ---
 const pokemonData = [
-    { name: '草苗龜', img: 'turtwig.png', color: '#78C850' },
-    { name: '小火焰猴', img: 'chimchar.png', color: '#F08030' },
-    { name: '波加曼', img: 'piplup.png', color: '#6890F0' },
-    { name: '藤藤蛇', img: 'snivy.png', color: '#4E8234' },
-    { name: '暖暖豬', img: 'tepig.png', color: '#FF4422' },
-    { name: '水水獺', img: 'oshawott.png', color: '#9DB7F5' },
-    { name: '哈力栗', img: 'chespin.png', color: '#A8B820' },
-    { name: '火狐狸', img: 'fennekin.png', color: '#F08030' },
-    { name: '呱呱泡蛙', img: 'froakie.png', color: '#6890F0' }
+    { name: '草苗龜', img: 'turtwig.png', color: '#78C850', type: 'grass' },
+    { name: '小火焰猴', img: 'chimchar.png', color: '#F08030', type: 'fire' },
+    { name: '波加曼', img: 'piplup.png', color: '#6890F0', type: 'water' },
+    { name: '藤藤蛇', img: 'snivy.png', color: '#4E8234', type: 'grass' },
+    { name: '暖暖豬', img: 'tepig.png', color: '#FF4422', type: 'fire' },
+    { name: '水水獺', img: 'oshawott.png', color: '#9DB7F5', type: 'water' },
+    { name: '哈力栗', img: 'chespin.png', color: '#A8B820', type: 'grass' },
+    { name: '火狐狸', img: 'fennekin.png', color: '#F08030', type: 'fire' },
+    { name: '呱呱泡蛙', img: 'froakie.png', color: '#6890F0', type: 'water' }
 ];
 
 const images = {};
@@ -71,30 +84,50 @@ pokemonData.forEach(p => { const img = new Image(); img.src = p.img; images[p.na
 // --- 2. 遊戲變數 ---
 let gameState = 'MENU';
 let isAIMode = false;
-let p1Idx = 0, p2Idx = 2, countdownNum = 3;
+let p1Idx = 0, p2Idx = 2;
+let selectingPlayer = 1; 
 let p1, p2, ball;
 const keys = {};
+
+// 暫存發球速度與特效粒子陣列
+let nextServerVx = 5;
+let particles = []; 
 
 // --- 3. UI 邏輯 ---
 function selectMode(ai) {
     isAIMode = ai;
-    document.getElementById('mode-text').innerText = ai ? "選擇你的角色 (電腦會隨機選)" : "1P 請點擊，2P 請點擊";
+    selectingPlayer = 1;
+    document.getElementById('mode-text').innerText = ai ? "選擇你的角色 (電腦會隨機選)" : "雙人選角";
+    document.getElementById('player-toggle').classList.toggle('hidden', ai);
+    document.getElementById('hint-text').classList.toggle('hidden', ai);
     showCharSelect();
+}
+
+function setSelectingPlayer(n) {
+    selectingPlayer = n;
+    updateCharHighlight();
 }
 
 function initCharGrid() {
     charGrid.innerHTML = '';
     pokemonData.forEach((p, i) => {
+        let typeBadge = p.type === 'grass' ? '🍃' : p.type === 'fire' ? '🔥' : '💧';
         const box = document.createElement('div');
         box.className = 'char-box';
-        box.innerHTML = `<img src="${p.img}" onerror="this.style.display='none'"><div style="font-size:10px">${p.name}</div>`;
-        box.onclick = () => { 
-            if(isAIMode) {
+        box.innerHTML = `<span style="position:absolute; right:5px; top:5px; font-size:12px;">${typeBadge}</span><img src="${p.img}" onerror="this.style.display='none'"><div style="font-size:10px; font-weight:bold;">${p.name}</div>`;
+        box.onclick = () => {
+            if (isAIMode) {
                 p1Idx = i;
                 p2Idx = Math.floor(Math.random() * pokemonData.length);
-                if(p2Idx === p1Idx) p2Idx = (p1Idx + 1) % 9;
+                if (p2Idx === p1Idx) p2Idx = (p1Idx + 1) % 9;
             } else {
-                p2Idx = p1Idx; p1Idx = i;
+                if (selectingPlayer === 1) {
+                    p1Idx = i;
+                    selectingPlayer = 2; 
+                } else {
+                    p2Idx = i;
+                    selectingPlayer = 1;
+                }
             }
             updateCharHighlight();
         };
@@ -110,11 +143,19 @@ function updateCharHighlight() {
         if (i === p1Idx) {
             box.classList.add('p1-select');
             box.insertAdjacentHTML('afterbegin', '<span class="label">1P</span>');
-        } else if (i === p2Idx) {
+        }
+        if (i === p2Idx) {
             box.classList.add('p2-select');
             box.insertAdjacentHTML('afterbegin', '<span class="label" style="background:#33f">2P</span>');
         }
     });
+
+    if (!isAIMode) {
+        const btn1 = document.getElementById('toggleP1');
+        const btn2 = document.getElementById('toggleP2');
+        btn1.classList.toggle('active-p1', selectingPlayer === 1);
+        btn2.classList.toggle('active-p2', selectingPlayer === 2);
+    }
 }
 
 function showCharSelect() {
@@ -122,6 +163,8 @@ function showCharSelect() {
     document.getElementById('main-menu').classList.add('hidden');
     document.getElementById('win-screen').classList.add('hidden');
     document.getElementById('char-select').classList.remove('hidden');
+    document.getElementById('player-toggle').classList.toggle('hidden', isAIMode);
+    document.getElementById('hint-text').classList.toggle('hidden', isAIMode);
     initCharGrid();
 }
 
@@ -133,33 +176,148 @@ function showMainMenu() {
 
 function startGame() {
     overlay.classList.add('hidden');
-    gameState = 'COUNTDOWN';
-    countdownNum = 3;
-    p1 = { x: 100, y: 320, w: 65, h: 65, vy: 0, score: 0, jumping: false, data: pokemonData[p1Idx] };
-    p2 = { x: 635, y: 320, w: 65, h: 65, vy: 0, score: 0, jumping: false, data: pokemonData[p2Idx] };
-    ball = { x: 400, y: 100, r: 15, vx: 5, vy: 0 };
-    let timer = setInterval(() => { countdownNum--; if (countdownNum <= 0) { clearInterval(timer); gameState = 'PLAYING'; } }, 1000);
+    p1 = { 
+        x: 100, y: 320, w: 65, h: 65, vy: 0, score: 0, 
+        jumping: false, canDoubleJump: false, jumpKeyReleased: true, 
+        data: pokemonData[p1Idx] 
+    };
+    p2 = { 
+        x: 635, y: 320, w: 65, h: 65, vy: 0, score: 0, 
+        jumping: false, canDoubleJump: false, jumpKeyReleased: true, 
+        data: pokemonData[p2Idx] 
+    };
+    
+    gameState = 'WAITING_SERVE';
+    ball = { x: 200, y: 100, r: 15, vx: 0, vy: 0, effect: 'none' };
+    nextServerVx = 5; 
+    particles = [];
 }
 
-// --- 4. 遊戲核心邏輯 ---
-window.onkeydown = (e) => keys[e.code] = true;
-window.onkeyup = (e) => keys[e.code] = false;
+// --- 4. 粒子特效產生器 ---
+function spawnLeafParticles(x, y) {
+    for (let i = 0; i < 12; i++) {
+        particles.push({
+            x: x,
+            y: y,
+            vx: (Math.random() - 0.5) * 6,
+            vy: (Math.random() - 0.2) * 5 + 2,
+            life: 30 + Math.random() * 20,
+            color: '#2ecc71',
+            size: 4 + Math.random() * 4
+        });
+    }
+}
+
+function spawnTrailParticles(x, y, type) {
+    if (type === 'fire') {
+        particles.push({
+            x: x + (Math.random() - 0.5) * 10,
+            y: y + (Math.random() - 0.5) * 10,
+            vx: (Math.random() - 0.5) * 2,
+            vy: (Math.random() - 0.5) * 2 - 1,
+            life: 15,
+            color: Math.random() > 0.4 ? '#e74c3c' : '#f39c12',
+            size: 3 + Math.random() * 5
+        });
+    } else if (type === 'water') {
+        particles.push({
+            x: x + (Math.random() - 0.5) * 12,
+            y: y + (Math.random() - 0.5) * 12,
+            vx: (Math.random() - 0.5) * 1.5,
+            vy: (Math.random() - 0.5) * 1.5,
+            life: 20,
+            color: Math.random() > 0.3 ? '#3498db' : '#85c1e9',
+            size: 2 + Math.random() * 4
+        });
+    }
+}
+
+// --- 5. 遊戲核心邏輯 ---
+window.onkeydown = (e) => {
+    keys[e.code] = true;
+    
+    if (e.code === 'Space') {
+        if (gameState === 'PLAYING') {
+            gameState = 'PAUSED';
+        } else if (gameState === 'PAUSED') {
+            gameState = 'PLAYING';
+        }
+    }
+};
+window.onkeyup = (e) => {
+    keys[e.code] = false;
+    // 釋放跳躍鍵判定，用來實作草屬性二段跳
+    if (e.code === 'KeyW') p1.jumpKeyReleased = true;
+    if (e.code === 'ArrowUp') p2.jumpKeyReleased = true;
+};
+
+canvas.addEventListener('click', () => {
+    if (gameState === 'WAITING_SERVE') {
+        ball.vx = nextServerVx;
+        gameState = 'PLAYING';
+    }
+});
 
 function loop() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.fillStyle = '#F4A460'; ctx.fillRect(0, 385, canvas.width, 15);
     ctx.fillStyle = '#FFF'; ctx.fillRect(397, 260, 6, 125);
 
-    if (gameState === 'PLAYING' || gameState === 'COUNTDOWN') {
+    if (gameState !== 'MENU' && gameState !== 'CHAR_SELECT' && gameState !== 'END') {
+        // 1. 繪製粒子特效
+        particles.forEach((p, idx) => {
+            ctx.fillStyle = p.color;
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+            ctx.fill();
+            p.x += p.vx;
+            p.y += p.vy;
+            p.life--;
+            if (p.life <= 0) particles.splice(idx, 1);
+        });
+
+        // 2. 繪製角色
         drawEntity(p1); drawEntity(p2);
-        if (ballImg.complete && ballImg.width > 0) ctx.drawImage(ballImg, ball.x - 15, ball.y - 15, 30, 30);
+
+        // 3. 繪製球體與特效光暈
+        if (ballImg.complete && ballImg.width > 0) {
+            ctx.save();
+            if (ball.effect === 'fire') {
+                ctx.shadowBlur = 20;
+                ctx.shadowColor = '#e74c3c';
+                spawnTrailParticles(ball.x, ball.y, 'fire');
+            } else if (ball.effect === 'water') {
+                ctx.shadowBlur = 20;
+                ctx.shadowColor = '#3498db';
+                spawnTrailParticles(ball.x, ball.y, 'water');
+            }
+            ctx.drawImage(ballImg, ball.x - 15, ball.y - 15, 30, 30);
+            ctx.restore();
+        }
+        
         ctx.fillStyle = "white"; ctx.font = "bold 40px Arial"; ctx.textAlign = "center";
         ctx.fillText(`${p1.score} : ${p2.score}`, 400, 60);
 
-        if (gameState === 'COUNTDOWN') {
-            ctx.fillStyle = "rgba(0,0,0,0.4)"; ctx.fillRect(0, 0, 800, 400);
-            ctx.fillStyle = "#f1c40f"; ctx.font = "bold 100px Arial"; ctx.fillText(countdownNum, 400, 230);
-        } else {
+        // 等待發球提示
+        if (gameState === 'WAITING_SERVE') {
+            ctx.fillStyle = "rgba(0,0,0,0.3)"; ctx.fillRect(0, 0, 800, 400);
+            ctx.fillStyle = "#fff"; ctx.font = "bold 30px 'Microsoft JhengHei', Arial"; 
+            ctx.fillText("🔴 點擊螢幕發球 🔵", 400, 180);
+            ctx.font = "16px 'Microsoft JhengHei', Arial";
+            ctx.fillStyle = "#fff";
+            ctx.fillText(`1P屬性: ${p1.data.type === 'grass'?'🍃草(二段跳)':p1.data.type==='fire'?'🔥火(強力扣殺)':'💧水(緩速控球)'}  |  2P屬性: ${p2.data.type === 'grass'?'🍃草(二段跳)':p2.data.type==='fire'?'🔥火(強力扣殺)':'💧水(緩速控球)'}`, 400, 220);
+        }
+
+        // 暫停提示
+        if (gameState === 'PAUSED') {
+            ctx.fillStyle = "rgba(0,0,0,0.5)"; ctx.fillRect(0, 0, 800, 400);
+            ctx.fillStyle = "#f1c40f"; ctx.font = "bold 50px 'Microsoft JhengHei', Arial"; 
+            ctx.fillText("遊戲暫停中", 400, 180);
+            ctx.fillStyle = "#fff"; ctx.font = "20px 'Microsoft JhengHei', Arial"; 
+            ctx.fillText("按下 [ 空白鍵 ] 繼續遊戲", 400, 230);
+        }
+
+        if (gameState === 'PLAYING' || gameState === 'WAITING_SERVE') {
             updatePhysics();
         }
     }
@@ -170,73 +328,123 @@ function drawEntity(p) {
     const img = images[p.data.name];
     if (img && img.complete && img.width > 0) ctx.drawImage(img, p.x, p.y, p.w, p.h);
     else { ctx.fillStyle = p.data.color; ctx.fillRect(p.x, p.y, p.w, p.h); }
+
+    // 在角色頭頂繪製屬性小標記
+    let badge = p.data.type === 'grass' ? '🍃' : p.data.type === 'fire' ? '🔥' : '💧';
+    ctx.font = "14px Arial";
+    ctx.fillText(badge, p.x + p.w / 2, p.y - 10);
 }
 
 function updatePhysics() {
-    // 1P 控制
+    // 1P 控制 (新增二段跳邏輯)
     if (keys['KeyA'] && p1.x > 0) p1.x -= 8;
     if (keys['KeyD'] && p1.x < 335) p1.x += 8;
-    if (keys['KeyW'] && !p1.jumping) { p1.vy = -14; p1.jumping = true; }
-
-    // 2P 控制 (玩家或 AI)
-    if (isAIMode) {
-        // AI 邏輯：增加動態偏移，防止底線直上直下
-        let aiOffset = Math.sin(Date.now() / 500) * 15; 
-        let targetX = ball.x - p2.w / 2 + aiOffset;
-
-        // 底線防呆：太靠近牆壁時稍微往場內站
-        if (p2.x > 720 && ball.x > 740) {
-            targetX = 650; 
+    if (keys['KeyW']) {
+        if (!p1.jumping) {
+            p1.vy = -14;
+            p1.jumping = true;
+            p1.jumpKeyReleased = false;
+            if (p1.data.type === 'grass') p1.canDoubleJump = true; // 草屬性獲得二段跳資格
+        } else if (p1.data.type === 'grass' && p1.canDoubleJump && p1.jumpKeyReleased) {
+            p1.vy = -11; // 觸發二段跳
+            p1.canDoubleJump = false; 
+            spawnLeafParticles(p1.x + p1.w / 2, p1.y + p1.h); // 產生葉子特效
         }
+    }
 
-        // 移動執行
+    // 2P 控制 (玩家或 AI，同樣引入二段跳機制)
+    if (isAIMode) {
+        let aiOffset = Math.sin(Date.now() / 500) * 15;
+        let targetX = ball.x - p2.w / 2 + aiOffset;
+        if (p2.x > 720 && ball.x > 740) { targetX = 650; }
         if (p2.x < targetX && p2.x < 735) p2.x += 6;
         if (p2.x > targetX && p2.x > 405) p2.x -= 6;
 
-        // 跳躍邏輯改進
-        if (ball.y > 180 && ball.vy > 0 && Math.abs(ball.x - (p2.x + p2.w/2)) < 50 && !p2.jumping) {
+        if (ball.vx !== 0 && ball.y > 180 && ball.vy > 0 && Math.abs(ball.x - (p2.x + p2.w / 2)) < 50 && !p2.jumping) {
             p2.vy = -14;
             p2.jumping = true;
+            if (p2.data.type === 'grass') p2.canDoubleJump = true;
+        }
+        // AI 在必要時也會觸發二段跳
+        if (p2.data.type === 'grass' && p2.jumping && p2.canDoubleJump && ball.y < 150 && Math.abs(ball.x - (p2.x + p2.w / 2)) < 60) {
+            p2.vy = -11;
+            p2.canDoubleJump = false;
+            spawnLeafParticles(p2.x + p2.w / 2, p2.y + p2.h);
         }
     } else {
-        // 雙人模式控制
         if (keys['ArrowLeft'] && p2.x > 400) p2.x -= 8;
         if (keys['ArrowRight'] && p2.x < 735) p2.x += 8;
-        if (keys['ArrowUp'] && !p2.jumping) { p2.vy = -14; p2.jumping = true; }
+        if (keys['ArrowUp']) {
+            if (!p2.jumping) {
+                p2.vy = -14;
+                p2.jumping = true;
+                p2.jumpKeyReleased = false;
+                if (p2.data.type === 'grass') p2.canDoubleJump = true;
+            } else if (p2.data.type === 'grass' && p2.canDoubleJump && p2.jumpKeyReleased) {
+                p2.vy = -11;
+                p2.canDoubleJump = false;
+                spawnLeafParticles(p2.x + p2.w / 2, p2.y + p2.h);
+            }
+        }
     }
 
     [p1, p2].forEach(p => {
         p.vy += 0.6; p.y += p.vy;
-        if (p.y >= 320) { p.y = 320; p.vy = 0; p.jumping = false; }
+        if (p.y >= 320) { p.y = 320; p.vy = 0; p.jumping = false; p.canDoubleJump = false; }
     });
 
-    ball.vy += 0.35; ball.x += ball.vx; ball.y += ball.vy;
-    if (ball.x < 15 || ball.x > 785) ball.vx *= -1;
-    if (ball.y < 15) { ball.y = 15; ball.vy *= -1; }
+    if (gameState === 'PLAYING') {
+        // 水屬性特殊效果：重力減半，球會輕飄飄地浮空
+        let currentGravity = ball.effect === 'water' ? 0.15 : 0.35;
+        ball.vy += currentGravity; 
+        
+        ball.x += ball.vx; 
+        ball.y += ball.vy;
 
-    [p1, p2].forEach(p => {
-        if (ball.x > p.x - 10 && ball.x < p.x + p.w + 10 && ball.y + 15 > p.y && ball.y - 15 < p.y + p.h) {
-            ball.vy = -12;
-            ball.vx = (ball.x - (p.x + p.w/2)) * 0.5;
-            ball.y = p.y - 16;
+        if (ball.x < 15 || ball.x > 785) ball.vx *= -1;
+        if (ball.y < 15) { ball.y = 15; ball.vy *= -1; }
+
+        // 擊球碰撞偵測（注入屬性特技）
+        [p1, p2].forEach(p => {
+            if (ball.x > p.x - 10 && ball.x < p.x + p.w + 10 && ball.y + 15 > p.y && ball.y - 15 < p.y + p.h) {
+                ball.vy = -12;
+                ball.vx = (ball.x - (p.x + p.w / 2)) * 0.5;
+                ball.y = p.y - 16;
+
+                // 根據球員屬性改變球特效與物理數值
+                if (p.data.type === 'fire') {
+                    ball.effect = 'fire';
+                    ball.vx *= 1.5; // 火屬性：殺球提速 1.5 倍
+                    ball.vy *= 1.2;
+                } else if (p.data.type === 'water') {
+                    ball.effect = 'water'; // 水屬性：觸發緩速重力
+                    ball.vy = -8; 
+                } else {
+                    ball.effect = 'none'; // 草屬性：維持普通球
+                }
+            }
+        });
+
+        if (ball.x > 390 && ball.x < 410 && ball.y > 260) {
+            ball.vx *= -1.2; ball.x = (ball.x < 400) ? 389 : 411;
         }
-    });
 
-    if (ball.x > 390 && ball.x < 410 && ball.y > 260) {
-        ball.vx *= -1.2; ball.x = (ball.x < 400) ? 389 : 411;
-    }
-
-    if (ball.y > 370) {
-        if (ball.x < 400) p2.score++; else p1.score++;
-        if (p1.score >= 20 || p2.score >= 20) endGame();
-        else resetBall(ball.x < 400 ? 'p2' : 'p1');
+        if (ball.y > 370) {
+            if (ball.x < 400) p2.score++; else p1.score++;
+            if (p1.score >= 20 || p2.score >= 20) endGame();
+            else resetBall(ball.x < 400 ? 'p2' : 'p1');
+        }
     }
 }
 
 function resetBall(server) {
-    ball.y = 100; ball.vy = 0;
+    gameState = 'WAITING_SERVE';
+    ball.y = 100; 
+    ball.vy = 0;
+    ball.vx = 0; 
+    ball.effect = 'none'; // 重置球體特效
     ball.x = (server === 'p1') ? 600 : 200;
-    ball.vx = (server === 'p1') ? -5 : 5;
+    nextServerVx = (server === 'p1') ? -5 : 5;
 }
 
 function endGame() {
@@ -251,4 +459,3 @@ loop();
 </script>
 </body>
 </html>
-
